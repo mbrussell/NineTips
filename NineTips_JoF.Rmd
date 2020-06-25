@@ -1,0 +1,152 @@
+---
+title: "R Markdown document to supplement the paper Nine tips to improve your everyday forest data analysis"
+author: "Matt Russell"
+date: "6/25/2020"
+output: html_document
+---
+
+## Load packages to use in analysis
+```{r}
+library(tidyverse)
+library(patchwork)
+library(googlesheets4)
+```
+
+## Read in the cedar elm data using googlesheets
+
+```{r}
+# Data is called elm.csv and contain 333 trees
+
+elm <- read_sheet("https://docs.google.com/spreadsheets/d/1ULm1ImOTeAI_7icwZnR5eYD8n7XeR1zyeU1CmbQkNrg/edit?usp=sharing")
+  
+# Adding a new variable CROWN_CLASS_CD_NAME
+# This variable will be used in graphs
+
+elm$CROWN_CLASS_CD_NAME <- ifelse(elm$CROWN_CLASS_CD == 1, "Open-grown",
+                               ifelse(elm$CROWN_CLASS_CD == 2, "Dominant", 
+                                      ifelse(elm$CROWN_CLASS_CD == 3, "Co-dominant",
+                                             ifelse(elm$CROWN_CLASS_CD == 4, "Intermediate",
+                                                 "Suppressed"))))
+```
+
+## Make graphs to display steps in exploratory data analysis
+
+```{r}
+# Height-diameter scatterplot will show trends between variables
+
+p.scatter <- ggplot(elm, aes(DIA, HT))+
+  geom_point()+
+  labs(x = "Diameter (in)", y = "Height (ft)")+
+  annotate(geom = "text", x = 6, y = 70, label = "(a)")+
+  theme(panel.background = element_rect(fill = "NA"),
+        axis.line = element_line(color = "black"),
+        axis.text = element_text(color = "black", size = 10),
+        axis.title = element_text(color = "black", size = 13))
+p.scatter
+
+# Histogram of height will show distribution 
+
+p.hist.ht <- ggplot(elm, aes(HT)) +
+  geom_histogram()+
+    labs(x = "Height (ft)", y = "Number of trees")+
+    annotate(geom = "text", x = 14, y = 45, label = "(b)")+
+    theme(panel.background = element_rect(fill = "NA"),
+        axis.line = element_line(color = "black"),
+        axis.text = element_text(color = "black", size = 10),
+        axis.title = element_text(color = "black", size = 13))
+p.hist.ht
+
+# Crown class needs to be ordered left to right for graphing 
+
+elm$CROWN_CLASS_CD_NAME <- factor(elm$CROWN_CLASS_CD_NAME,
+                                  levels = c("Open-grown", "Dominant", 
+                                             "Co-dominant", "Intermediate", "Suppressed"))
+
+# Violin plot of height will show distribution by crown class 
+
+p.vio.ht <- ggplot(elm, aes(CROWN_CLASS_CD_NAME, HT)) +
+  geom_violin()+
+  labs(x = "Crown class", y = "Height (ft)")+
+  annotate(geom = "text", x = 1, y = 70, label = "(c)")+
+  theme(panel.background = element_rect(fill = "NA"),
+        axis.text.x = element_text(angle = 90),
+        axis.ticks.x = element_blank(),
+        axis.line = element_line(color = "black"),
+        axis.text = element_text(color = "black", size = 10),
+        axis.title = element_text(color = "black", size = 13))
+p.vio.ht
+
+# Stitch together the three graphs using patchwork package
+
+p.all <- p.scatter + p.hist.ht + p.vio.ht
+p.all
+```
+
+## A bar plot will display mean height by crown class
+```{r}
+# We need a data set of mean height of cedar elm trees by crown class
+
+elm.gr <- group_by(elm, CROWN_CLASS_CD_NAME)
+elm.summ <- summarize(elm.gr,
+            count.ht = n(),
+            mean.ht = mean(HT),
+            std.ht = sd(HT))
+
+# We need to calculate standard error and grpah them
+
+elm.summ <- mutate(elm.summ, se.ht = std.ht/sqrt(count.ht))
+limits <- aes(ymax = mean.ht + se.ht, ymin = mean.ht - se.ht)
+
+# A bar plot will display mean height by crown class
+
+p.ht.mean <- ggplot(elm.summ, aes(CROWN_CLASS_CD_NAME, mean.ht)) +
+  geom_bar(stat = "identity", fill = "lightgrey", col = "black")+
+  geom_errorbar(limits, width=0.25)+
+  labs(x = "Crown class", y = "Mean height (ft)")+
+  theme(panel.background = element_rect(fill = "NA"),
+        axis.text.x = element_text(angle = 90),
+        axis.ticks.x = element_blank(),
+        axis.line = element_line(color = "black"),
+        axis.text = element_text(color = "black", size = 10),
+        axis.title = element_text(color = "black", size = 13))
+p.ht.mean 
+```
+
+# The data need to be presented to the general public
+
+```{r}
+# elm.sun is a dataset with percent of trees receive:
+# Lots of sun (open-grown, dominant, and co-dominant trees), and
+# Little sun (intermediate and suppressed trees)
+
+elm.sun <- tribble(
+~type, ~amt,
+"Lots of sun", 84,
+"Little sun", 16
+)
+
+# Amount of sunlight needs to be ordered left to right for graphing 
+
+elm.sun$type <- factor(elm.sun$type, levels = c("Lots of sun", "Little sun"))
+
+# A bar plot will display percent of trees by amount of sun
+
+p.sun <- ggplot(elm.sun, aes(type, amt, fill = type)) +
+  geom_bar(stat = "identity", color = "black", position = "dodge")+
+  scale_fill_manual(values = c("yellow", "dark grey"))+
+  labs(x = " ", y = "Percent of trees")+
+  annotate(geom = "text", y = 94, x = 1, label = "84%", size = 10)+
+  annotate(geom = "text", y = 26, x = 2, label = "16%", size = 10)+
+  scale_y_continuous(limits = c(0, 100))+
+  ggtitle("Most cedar elm trees in Austin, TX \nreceive lots of sunlight.", )+
+  theme(panel.background = element_rect(fill = "NA"),
+        axis.text.x = element_text(angle = 0),
+        axis.ticks.x = element_blank(),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        axis.line = element_line(color = "black"),
+        axis.text = element_text(color = "black", size = 10),
+        axis.title = element_text(color = "black", size = 13))
+p.sun
+```
+
